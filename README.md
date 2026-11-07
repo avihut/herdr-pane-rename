@@ -25,7 +25,7 @@ This is a native GPUI mod for the **Herdr desktop app**. Names are persistent, c
 | Fallout | Pane header and ··· menu; green/amber instrument-panel dialog |
 | Evangelion | Entry-plug header and pane menu; native palette and typography |
 
-The installer adapts existing personal layouts. Independently maintained XP, Fallout and Evangelion sources use the optional [integration helper and patches](integrations/README.md), so their normal installers remain authoritative. New layouts can use the same small helper; StarCraft’s author has received the integration contract while that layout is in development.
+The installer adapts existing personal layouts. Independently maintained XP, Fallout and Evangelion sources use the optional [integration helper and patches](integrations/README.md), so their normal installers remain authoritative. New layouts can use the same small helper. StarCraft II’s author has integrated it in the staged source; the dialog includes that layout’s light/dark palette, Geist typography and square panels. Live installation of StarCraft remains with its author.
 
 ## Install
 

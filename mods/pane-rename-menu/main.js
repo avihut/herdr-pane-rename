@@ -35,7 +35,7 @@ export default class PaneMenu extends View {
   }
   render() {
     const s = look(), { rows, p } = this.items();
-    const highlightedText = ["xp", "win98", "lcars", "fallout"].includes(s.kind) ? s.onAccent : s.fg;
+    const highlightedText = ["xp", "win98", "lcars", "fallout", "starcraft"].includes(s.kind) ? s.onAccent : s.fg;
     const content = v_flex().p(5).gap(2)
       .child(div().px(8).py(5).truncate().text_size(11).text_color(s.dim).child(paneName(p) || p?.title || "Pane"))
       .when(!rows.length, e => e.child(div().p(8).child("This pane is no longer available.")))

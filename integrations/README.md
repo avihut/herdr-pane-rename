@@ -24,4 +24,4 @@ Install the three common mods first. Apply a patch only to its matching source r
 
 From the layout source worktree, run `git apply --check /path/to/patch` before `git apply /path/to/patch`. Run that repository’s checks and install task: XP uses `mise run install`; Fallout uses `mise run install-update`; Evangelion uses `mise run update`. The patches include the optional helper inside the host mod. They retain native controls and add a root `terminal_menu` reference; Herdr documents its built-in fallback if that optional menu mod is missing.
 
-Evangelion’s integration is coordinated with its source owner and includes installer completeness checks. Do not copy only its main/kit files: the helper must be installed with them.
+Evangelion public main at `3648742` already includes this integration; do not apply its patch twice. The patch is for the pre-integration `d7daf8e` baseline only. Its integration includes installer completeness checks. Do not copy only its main/kit files: the helper must be installed with them.

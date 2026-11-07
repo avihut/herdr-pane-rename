@@ -34,7 +34,14 @@ export function look() {
       field: dark ? "#111a10" : "#e8ecd9", edge: dark ? "#657050" : "#7c8767",
       accent: ink, onAccent: dark ? "#111a10" : "#e8ecd9", button: dark ? "#111a10" : "#e8ecd9",
       selected: ink, hover: ink });
-  } else if (layout === "board") Object.assign(s, { kind: "board", radius: 7, size: 13 });
+  } else if (layout === "starcraft2") Object.assign(s, { kind: "starcraft", font: "Geist", radius: 0, size: 12, row: 28,
+    bg: dark ? "#1b282b" : "#f0f0e6", field: dark ? "#11191b" : "#dce1d7",
+    fg: dark ? "#e0e9de" : "#20352c", dim: dark ? "#a5b8b2" : "#4e665b",
+    edge: dark ? "#4f6260" : "#6c7c72", button: dark ? "#26383a" : "#cbd6c8",
+    accent: dark ? "#83dfab" : "#156941", onAccent: dark ? "#11191b" : "#f0f0e6",
+    selected: dark ? "#83dfab" : "#156941", hover: dark ? "#83dfab" : "#156941",
+    heading: dark ? "#dbb46d" : "#74531e" });
+  else if (layout === "board") Object.assign(s, { kind: "board", radius: 7, size: 13 });
   else if (layout === "evangelion") Object.assign(s, { kind: "evangelion", font: "Geist Mono", radius: 0, size: 12, row: 28 });
   else if (["terminals", "my-terminals"].includes(layout)) Object.assign(s, { kind: "terminals", radius: 16, size: 13 });
   else if (layout === "herdr-t3") Object.assign(s, { size: 14, radius: 6 });
@@ -73,7 +80,7 @@ export function panel(s, content, title, dismiss) {
     else if (s.kind === "win98") bar = bar.h(22).px(4).bg(s.accent).text_color(s.onAccent);
     else if (s.kind === "lcars") bar = bar.bg(s.accent).text_color(s.onAccent).rounded_tl(24).rounded_tr(24);
     else if (s.kind === "evangelion") bar = bar.font_family("Antonio").text_size(20).text_color(s.accent).border_b(1).border_color(s.accent);
-    else bar = bar.border_b(1).border_color(s.edge);
+    else bar = bar.text_color(s.heading ?? s.fg).border_b(1).border_color(s.edge);
     root = root.child(bar.child(div().relative().flex_1().font_semibold().child(["lcars", "fallout", "evangelion"].includes(s.kind) ? title.toUpperCase() : title))
       .child(div().relative().id("rename-dismiss").px(5).cursor_pointer().child("×").on_click(dismiss)));
   }
