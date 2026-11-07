@@ -1,0 +1,310 @@
+--- a/mods/evangelion/main.js
++++ b/mods/evangelion/main.js
+@@ -1,3 +1,4 @@
++import { renamedPane } from "./pane-rename.js";
+ import { div, svg } from "gpui-kit";
+ import { h_flex, v_flex } from "gpui-base";
+ import { agents, spaces, panes, machines, layouts, props, shared, setShared, setAgentOrder, run, window, exec, closeOverlay } from "herdr";
+@@ -168,7 +169,7 @@
+       .border_b(1).border_color(pane.focused?p.orange:p.border).on_click(()=>run("pane.focus",{pane:pane.pane}))
+       .on_mouse_down("right",right(()=>context("pane",{pane:pane.pane,terminal:pane.terminal})))
+       .child(label(a?`EVA-${pad(u)} / ${a.address}`:"ENTRY PLUG",a?unitColor(u):p.orange,10))
+-      .child(div().flex_1().min_w(0).truncate().text_size(10).child(pane.title||pane.program?.name||"Terminal"))
++      .child(div().flex_1().min_w(0).truncate().text_size(10).child(renamedPane(pane)||pane.title||pane.program?.name||"Terminal"))
+       .child(indicator(pane.status))
+       .child(button(`split-${pane.pane}`,"+",()=>run("pane.split",{pane:pane.pane,direction:"right"}),{h:19,px:4,tip:"Split this pane right"}))
+       .child(button(`zoom-${pane.pane}`,pane.zoomed?"↙":"↗",()=>run("pane.zoom",{pane:pane.pane}),{h:19,px:4,tip:"Toggle pane zoom"}));
+--- a/mods/evangelion/kit.js
++++ b/mods/evangelion/kit.js
+@@ -1,3 +1,4 @@
++import { paneRenameAvailable } from "./pane-rename.js";
+ import { div, image } from "gpui-kit";
+ import { h_flex, v_flex } from "gpui-base";
+ import { theme, settings, shared, openOverlay, run } from "herdr";
+@@ -37,7 +38,11 @@
+ export function openRole(role, extra = {}) {
+   return openOverlay({ mod:"evangelion", kind:"dialog", frame:"none", width: role === "agent" ? 440 : 630, height: role === "agent" ? 410 : 640, props:{role,...extra} });
+ }
+-export const context = (tab,target) => openOverlay({mod:"menu",kind:"popup",width:240,height:320,props:{tab,target}});
++export async function context(tab,target) {
++  if(tab === "pane" && target?.pane && await paneRenameAvailable())
++    return openOverlay({mod:"pane-rename-menu",kind:"popup",frame:"none",width:290,props:{tab,target}});
++  return openOverlay({mod:"menu",kind:"popup",width:240,props:{tab,target}});
++}
+ export const newMenu = () => openOverlay({mod:"new-menu",kind:"popup",width:260,height:500});
+ export function root() { const p=palette();return v_flex().size_full().min_h(0).bg(p.chrome).text_color(p.foreground).font_family(mono); }
+ export function launchFocused() { run("app.palette"); }
+--- /dev/null
++++ b/mods/evangelion/pane-rename.js
+@@ -0,0 +1,25 @@
++// Copy into the host layout's own mod folder. It has no imports from the optional mod.
++import { shared, readTextFile, appHome, openOverlay } from "herdr";
++
++export function renamedPane(p) {
++  if (!p?.pane) return null;
++  const key = `pane-rename.v1:${JSON.stringify([p.pane, p.terminal ?? null, p.mod ?? null])}`;
++  const name = shared(key);
++  return typeof name === "string" && name ? name : null;
++}
++
++// Call once as the native menu opens; never call in render or on a polling timer.
++export async function paneRenameAvailable() {
++  try {
++    const text = await readTextFile(`${appHome()}/mods/pane-rename/mod.json`);
++    return JSON.parse(text ?? "null")?.pane_rename_api === 1;
++  } catch {
++    return false;
++  }
++}
++
++// Call only from a menu whose availability check succeeded. Capture the clicked ID.
++export function openPaneRename(pane) {
++  if (typeof pane !== "string" || !pane) return;
++  return openOverlay({ mod: "pane-rename", kind: "dialog", frame: "none", width: 460, props: { pane } });
++}
+--- a/layouts/evangelion.json
++++ b/layouts/evangelion.json
+@@ -141,5 +141,6 @@
+         "px": 34
+       }
+     }
+-  ]
++  ],
++  "terminal_menu": "pane-rename-menu"
+ }
+--- a/scripts/install.py
++++ b/scripts/install.py
+@@ -5,6 +5,7 @@
+ import os
+ from pathlib import Path
+ import shutil
++import sys
+ import tempfile
+ from datetime import datetime, timezone
+ 
+@@ -16,7 +17,7 @@
+     for directory in ['assets', 'fonts']:
+         ordered.extend(sorted((ROOT/MOD/directory).rglob('*')))
+     ordered = [p.relative_to(ROOT) if p.is_absolute() else p for p in ordered if (p if p.is_absolute() else ROOT/p).is_file()]
+-    ordered.extend(MOD/name for name in ['kit.js','model.js','simulation.js','README.md','RECIPE.md','VALIDATION.md','main.js'])
++    ordered.extend(MOD/name for name in ['pane-rename.js','kit.js','model.js','simulation.js','README.md','RECIPE.md','VALIDATION.md','main.js'])
+     ordered.extend([Path('themes/evangelion-dark.json'),Path('themes/evangelion-light.json'),Path('layouts/evangelion.json')])
+     return ordered
+ 
+@@ -47,13 +48,50 @@
+         for rel in collisions:
+             target=backup/rel;target.parent.mkdir(parents=True,exist_ok=True)
+             shutil.copy2(home/rel,target)
+-    # Manifest first; main.js after its modules; layout last. Each file is atomic.
+-    for rel in entries:
+-        target=home/rel;target.parent.mkdir(parents=True,exist_ok=True)
+-        with tempfile.NamedTemporaryFile(dir=target.parent,delete=False) as out:
+-            temporary=Path(out.name);out.write((ROOT/rel).read_bytes())
+-        try: os.replace(temporary,target)
+-        finally: temporary.unlink(missing_ok=True)
++    # Prepare the complete mod outside the watched mods directory. Replacing each
++    # file live causes a reload per file and can exhaust Herdr's mod runtime.
++    home.mkdir(parents=True,exist_ok=True)
++    stage=Path(tempfile.mkdtemp(prefix='.herdr-evangelion-stage-',dir=home))
++    cleanup=True
++    try:
++        target_mod=home/MOD
++        staged_mod=stage/'mod'
++        old_mod=stage/'previous-mod'
++        if target_mod.exists():
++            # Keep local QA captures, generated types and other unowned files.
++            shutil.copytree(target_mod,staged_mod,symlinks=True)
++        else: staged_mod.mkdir()
++        for rel in entries:
++            target=staged_mod/rel.relative_to(MOD) if rel.is_relative_to(MOD) else stage/'files'/rel
++            target.parent.mkdir(parents=True,exist_ok=True)
++            shutil.copy2(ROOT/rel,target)
++        target_mod.parent.mkdir(parents=True,exist_ok=True)
++        old_moved=False;new_installed=False;written=[]
++        try:
++            if target_mod.exists():
++                os.replace(target_mod,old_mod);old_moved=True
++            os.replace(staged_mod,target_mod);new_installed=True
++            # Theme files follow the complete mod; layout is last.
++            for rel in entries:
++                if rel.is_relative_to(MOD):continue
++                target=home/rel;target.parent.mkdir(parents=True,exist_ok=True)
++                os.replace(stage/'files'/rel,target);written.append(rel)
++        except OSError:
++            cleanup=False
++            # Restore earlier files and the previous whole mod on a failed swap.
++            for rel in reversed(written):
++                target=home/rel
++                if rel in collisions:
++                    restore=stage/'restore'/rel;restore.parent.mkdir(parents=True,exist_ok=True)
++                    shutil.copy2(backup/rel,restore);os.replace(restore,target)
++                else: target.unlink(missing_ok=True)
++            if new_installed:shutil.rmtree(target_mod)
++            if old_moved:os.replace(old_mod,target_mod)
++            cleanup=True
++            raise
++    finally:
++        if cleanup:shutil.rmtree(stage)
++        else:print(f"Rollback incomplete; recovery files retained at {stage}",file=sys.stderr)
+     return {'home':str(home),'files':len(entries),'backup':str(backup) if backup else None}
+ 
+ def main():
+--- a/tests/test_install.py
++++ b/tests/test_install.py
+@@ -1,13 +1,27 @@
+ import importlib.util
+ import json
++import re
+ from pathlib import Path
+ import tempfile
+ import unittest
++from unittest.mock import patch
+ 
+ SPEC=importlib.util.spec_from_file_location('installer',Path(__file__).resolve().parents[1]/'scripts/install.py')
+ installer=importlib.util.module_from_spec(SPEC);SPEC.loader.exec_module(installer)
+ 
+ class InstallTest(unittest.TestCase):
++    def test_installed_local_imports_are_complete(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            target=Path(tmp);installer.install(target)
++            pending=[target/'mods/evangelion/main.js'];seen=set()
++            while pending:
++                module=pending.pop()
++                if module in seen:continue
++                seen.add(module)
++                self.assertTrue(module.is_file(), f'Installed import is missing: {module.name}')
++                for name in re.findall(r'from\s+[\"\x27](\.[^\"\x27]+)[\"\x27]',module.read_text()):
++                    pending.append((module.parent/name).resolve())
++
+     def test_safe_install_and_explicit_update(self):
+         with tempfile.TemporaryDirectory() as tmp:
+             target=Path(tmp);(target/'settings.json').write_text('{"sentinel":true}')
+@@ -17,12 +31,54 @@
+             self.assertEqual(json.loads((target/'mods/evangelion/mod.json').read_text())['place'],'none')
+             self.assertEqual((target/'settings.json').read_text(),'{"sentinel":true}')
+             old=target/'mods/evangelion/main.js';old.write_text('local modification')
++            local=target/'mods/evangelion/local-qa.txt';local.write_text('preserve local evidence')
+             with self.assertRaises(ValueError):installer.install(target)
+             self.assertEqual(old.read_text(),'local modification')
+             result=installer.install(target,update=True)
+             self.assertEqual((Path(result['backup'])/'mods/evangelion/main.js').read_text(),'local modification')
+             self.assertEqual(old.read_bytes(),(installer.ROOT/'mods/evangelion/main.js').read_bytes())
+             self.assertEqual((target/'settings.json').read_text(),'{"sentinel":true}')
++            self.assertEqual(local.read_text(),'preserve local evidence')
++
++    def test_failed_folder_swap_restores_previous_mod(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            target=Path(tmp);installer.install(target)
++            old=target/'mods/evangelion/main.js';old.write_text('local modification')
++            replace=installer.os.replace
++            def fail_new_mod(src,dst):
++                if Path(src).name=='mod':raise OSError('simulated rename failure')
++                return replace(src,dst)
++            with patch.object(installer.os,'replace',side_effect=fail_new_mod):
++                with self.assertRaises(OSError):installer.install(target,update=True)
++            self.assertEqual(old.read_text(),'local modification')
++
++    def test_failed_layout_write_restores_mod_and_themes(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            target=Path(tmp);installer.install(target)
++            old=target/'mods/evangelion/main.js';old.write_text('local modification')
++            theme=target/'themes/evangelion-dark.json';theme.write_text('{"sentinel":true}')
++            replace=installer.os.replace
++            def fail_layout(src,dst):
++                if Path(dst).resolve()==(target/'layouts/evangelion.json').resolve():raise OSError('simulated layout failure')
++                return replace(src,dst)
++            with patch.object(installer.os,'replace',side_effect=fail_layout):
++                with self.assertRaises(OSError):installer.install(target,update=True)
++            self.assertEqual(old.read_text(),'local modification')
++            self.assertEqual(theme.read_text(),'{"sentinel":true}')
++
++    def test_failed_rollback_retains_recovery_folder(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            target=Path(tmp);installer.install(target)
++            old=target/'mods/evangelion/local-qa.txt';old.write_text('preserve local evidence')
++            replace=installer.os.replace
++            def fail_both_swaps(src,dst):
++                if Path(src).name in ['mod','previous-mod']:raise OSError('simulated persistent failure')
++                return replace(src,dst)
++            with patch.object(installer.os,'replace',side_effect=fail_both_swaps):
++                with self.assertRaises(OSError):installer.install(target,update=True)
++            recovery=list(target.glob('.herdr-evangelion-stage-*'))
++            self.assertEqual(len(recovery),1)
++            self.assertEqual((recovery[0]/'previous-mod/local-qa.txt').read_text(),'preserve local evidence')
+ 
+     def test_dry_run_writes_nothing(self):
+         with tempfile.TemporaryDirectory() as tmp:
+--- /dev/null
++++ b/tests/pane-rename.test.mjs
+@@ -0,0 +1,62 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {readFile} from 'node:fs/promises';
++
++// Exercise the actual integration functions with Herdr's file/overlay boundary
++// replaced. No installed optional plugin or live window is changed.
++const helperSource=await readFile(new URL('../mods/evangelion/pane-rename.js',import.meta.url),'utf8');
++const kitSource=await readFile(new URL('../mods/evangelion/kit.js',import.meta.url),'utf8');
++let serial=0;
++async function fixture(read,shared=()=>null) {
++  const opened=[],reads=[];
++  const key=`__paneRenameFixture${++serial}`;
++  globalThis[key]={shared,readTextFile:async path=>{reads.push(path);return read(path);},appHome:()=>'/example',openOverlay:options=>{opened.push(options);return 'overlay-id';}};
++  const helperText=helperSource.replace(/import \{([^}]+)\} from "herdr";/,`const {$1}=globalThis[${JSON.stringify(key)}];`);
++  const url='data:text/javascript;base64,'+Buffer.from(helperText).toString('base64');
++  const helper=await import(url);
++  const kitText=kitSource.replace('"./pane-rename.js"',JSON.stringify(url))
++    .replace(/import \{[^}]+\} from "gpui-kit";/,'const div=()=>{}, image=()=>{};')
++    .replace(/import \{[^}]+\} from "gpui-base";/,'const h_flex=()=>{}, v_flex=()=>{};')
++    .replace(/import \{([^}]+)\} from "herdr";/,`const {$1}=globalThis[${JSON.stringify(key)}];`);
++  const kit=await import('data:text/javascript;base64,'+Buffer.from(kitText).toString('base64'));
++  delete globalThis[key];
++  return {helper,kit,opened,reads};
++}
++
++test('absent optional dependency routes pane context to the ordinary menu',async()=>{
++  const f=await fixture(()=>{throw Error('not installed');});
++  const target={pane:'clicked-pane',terminal:'clicked-terminal'};
++  await f.kit.context('pane',target);
++  assert.equal(f.opened[0].mod,'menu');
++  assert.deepEqual(f.opened[0].props,{tab:'pane',target});
++});
++test('malformed and unsupported capability manifests fail closed',async()=>{
++  for(const text of ['{','null','{}','{"pane_rename_api":2}']) {
++    const f=await fixture(()=>text);
++    assert.equal(await f.helper.paneRenameAvailable(),false);
++  }
++});
++test('supported pane menu preserves clicked target and content sizing',async()=>{
++  const f=await fixture(()=>' {"pane_rename_api":1}');
++  const target={pane:'unfocused-pane',terminal:'other-terminal'};
++  await f.kit.context('pane',target);
++  assert.equal(f.opened[0].mod,'pane-rename-menu');
++  assert.deepEqual(f.opened[0].props.target,target);
++  assert.equal(f.opened[0].height,undefined);
++  assert.equal(f.reads.length,1);
++});
++test('space and tab menus do not probe the optional capability',async()=>{
++  const f=await fixture(()=>{throw Error('should not be read');});
++  await f.kit.context('space',{space:'space'});
++  await f.kit.context('tab',{tab:'tab'});
++  assert.equal(f.reads.length,0);
++  assert.ok(f.opened.every(x=>x.mod==='menu'));
++});
++test('pane names are identity-scoped and invalid values fall back',async()=>{
++  const p={pane:'pane',terminal:'terminal',mod:null};
++  const key='pane-rename.v1:'+JSON.stringify(['pane','terminal',null]);
++  const f=await fixture(()=>null,k=>k===key?'名前 🚀':null);
++  assert.equal(f.helper.renamedPane(p),'名前 🚀');
++  assert.equal(f.helper.renamedPane({...p,terminal:'replaced-terminal'}),null);
++  assert.equal(f.helper.renamedPane(null),null);
++});
+--- a/package.json
++++ b/package.json
+@@ -5,5 +5,5 @@
+   "type": "module",
+   "description": "NERV operations layout for Herdr with EVA agents, MAGI telemetry and training games",
+   "license": "MIT",
+-  "scripts": { "test": "node --test tests/model.test.mjs" }
++  "scripts": { "test": "node --test tests/*.test.mjs" }
+ }

@@ -1,0 +1,16 @@
+layout: contained
+
+tasks:
+  test:
+    jobs:
+      - name: test
+        run: mise run test
+  check:
+    jobs:
+      - name: native-check
+        run: mise run check
+
+relations:
+  - url: git@github.com:avihut/herdr-xp.git
+  - url: git@github.com:avihut/herdr-evangelion.git
+  - url: git@github.com:avihut/herdr-fallout.git

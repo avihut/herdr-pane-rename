@@ -1,0 +1,69 @@
+--- a/mods/fallout/main.js
++++ b/mods/fallout/main.js
+@@ -1,3 +1,4 @@
++import { renamedPane, paneRenameAvailable, openPaneRename } from "./pane-rename.js";
+ import { View } from "gpui-kit";
+ import { props,spaces,agents,panes,machines,focused,theme,settings,shared,setShared,run,layouts,setAgentOrder,window as appWindow,exec } from "herdr";
+ import { div,svg,h_flex,v_flex,pal,txt,root,btn,rule,signal,open,menu,close,shell,award } from "./kit.js";
+@@ -44,7 +45,7 @@
+   render(){const c=pal(),s=spaces().find(s=>s.active);return root().bg(c.metal).child(h_flex().size_full().gap(5).px(8).items_center().child(txt("QUESTS",10,c.paper)).child(h_flex().id("quest-scroll").flex_1().min_w(0).overflow_x_scrollbar().gap(5).children((s?.tabs??[]).map(t=>btn("tab-"+t.id,(t.active?"▣ ":"□ ")+t.name+(t.settled?" [parked]":""),()=>run("tab.select",{id:t.id}),t.active).tooltip(t.name+" · "+(t.status??"no agent status")).on_mouse_down("right",(_e,cx)=>{cx.stop_propagation();menu("tab",{id:t.id,settled:t.settled});})))).child(btn("new-tab","+",()=>run("tab.new",{})).tooltip("New quest / terminal tab")));}
+ }
+ class Pane {
+-  render(){const c=pal(),p=panes().find(p=>p.pane===props()?.pane);return root().bg(c.metal).child(h_flex().size_full().px(8).gap(7).items_center().child(signal(p?.status)).child(txt(p?.terminal??"MOD",10)).child(txt(p?.title??"TERMINAL",11,c.paper).flex_1().truncate()).child(btn("pane-more","···",()=>menu("pane",{pane:p?.pane,terminal:p?.terminal})).h(22)).child(btn("pane-zoom",p?.zoomed?"↙":"↗",()=>p&&run("pane.zoom",{pane:p.pane})).h(22)));}
++  render(){const c=pal(),p=panes().find(p=>p.pane===props()?.pane);return root().id("fallout-pane-header").on_mouse_down("right",(_e,cx)=>{cx.stop_propagation();if(p)menu("pane",{pane:p.pane,terminal:p.terminal});}).bg(c.metal).child(h_flex().size_full().px(8).gap(7).items_center().child(signal(p?.status)).child(txt(p?.terminal??"MOD",10)).child(txt(renamedPane(p)||p?.title||"TERMINAL",11,c.paper).flex_1().truncate()).child(btn("pane-more","···",()=>menu("pane",{pane:p?.pane,terminal:p?.terminal})).h(22)).child(btn("pane-zoom",p?.zoomed?"↙":"↗",()=>p&&run("pane.zoom",{pane:p.pane})).h(22)));}
+ }
+ class Footer {
+   init(_p,cx){this.net="LINK ?";this.netInfo="Local network status not read yet";this.battery=null;this.last="Pending";this.refresh(cx);cx.timer.every(30000,cx=>this.refresh(cx));}
+@@ -52,12 +53,13 @@
+   render(){const c=pal(),s=spaces().find(s=>s.active),all=agents(),needs=all.filter(a=>a.status==="blocked"||a.status==="done");return root().bg(c.metal).child(h_flex().size_full().px(10).gap(12).items_center().child(txt("ROBCO / LIVE",10,c.paper)).child(txt(s?.name??"NO SETTLEMENT",11).truncate().flex_1()).child(btn("attention",needs.length+" OBJECTIVES",()=>{const a=needs[0];if(a)goAgent(a);else setShared("fallout.section","STAT");}).h(23)).child(h_flex().id("network").gap(5).items_center().tooltip(this.netInfo+" Updated "+this.last+"; refreshes every 30s.").child(emblem("relay",16)).child(txt(this.net,10))).when(!!this.battery,e=>e.child(h_flex().id("battery").gap(4).items_center().tooltip(this.battery.detail).child(div().w(20).h(10).border(1).border_color(c.ink).p(1).child(div().h_full().w(Math.max(1,16*(this.battery.pct||0)/100)).bg(c.ink))).child(txt(this.battery.label,10)))).child(btn("footer-manual","MANUAL",()=>open("help")).h(23)));}
+ }
+ class Menu {
++  init(_p,cx){this.renameAvailable=false;if(props()?.kind==="pane")cx.spawn(async cx=>{this.renameAvailable=await paneRenameAvailable();cx.notify();});}
+   render(){const c=pal(),p=props()??{},t=p.target??{},entries=[];const action=(label,f)=>entries.push({label,f});
+     if(p.kind==="layouts"){const all=layouts();for(const name of all.filter(n=>!(REPLACED[n]&&all.includes(REPLACED[n]))))action((shared("layout")===name?"▣ ":"□ ")+title(name),()=>run("layout.switch",{name}));}
+     if(p.kind==="space"){action("Rename settlement…",()=>run("space.rename",{id:t.id}));action("New quest",()=>run("tab.new",{space:t.id}));action("Close settlement…",()=>run("space.close",{id:t.id}));}
+     if(p.kind==="tab"){action("Rename quest…",()=>run("tab.rename",{id:t.id}));action(t.settled?"Resume quest":"Park quest (keep running)",()=>run(t.settled?"tab.unsettle":"tab.settle",{id:t.id}));action("Close quest…",()=>run("tab.close",{id:t.id}));}
+     if(p.kind==="agent"){action("Focus companion",()=>run("agent.focus",{terminal:t.terminal}));action("Peek at terminal",()=>run("terminal.peek",{terminal:t.terminal}));action(t.pinned?"Unpin companion":"Pin companion",()=>run("terminal.pin",{terminal:t.terminal,pinned:!t.pinned}));}
+-    if(p.kind==="pane"){if(t.pane){action("Split right",()=>run("pane.split",{pane:t.pane,direction:"right"}));action("Split down",()=>run("pane.split",{pane:t.pane,direction:"down"}));action("Zoom pane",()=>run("pane.zoom",{pane:t.pane}));action("Close pane…",()=>run("pane.close",{pane:t.pane}));}if(t.terminal)action("Peek terminal",()=>run("terminal.peek",{terminal:t.terminal}));}
++    if(p.kind==="pane"){if(t.pane){if(this.renameAvailable)action("Rename pane…",()=>openPaneRename(t.pane));action("Split right",()=>run("pane.split",{pane:t.pane,direction:"right"}));action("Split down",()=>run("pane.split",{pane:t.pane,direction:"down"}));action("Zoom pane",()=>run("pane.zoom",{pane:t.pane}));action("Close pane…",()=>run("pane.close",{pane:t.pane}));}if(t.terminal)action("Peek terminal",()=>run("terminal.peek",{terminal:t.terminal}));}
+     return v_flex().w_full().bg(c.well).border(2).border_color(c.edge).p(6).gap(2).font_family("Geist Mono").child(txt(p.kind==="layouts"?"DISPLAY MODULE / LAYOUTS":"FIELD ACTIONS",11,c.faint).px(7).py(6)).children(entries.map((it,i)=>btn("menu-"+i,it.label,()=>{close();it.f();}).justify_start().border(0).w_full().h(28)));
+   }
+ }
+--- /dev/null
++++ b/mods/fallout/pane-rename.js
+@@ -0,0 +1,25 @@
++// Copy into the host layout's own mod folder. It has no imports from the optional mod.
++import { shared, readTextFile, appHome, openOverlay } from "herdr";
++
++export function renamedPane(p) {
++  if (!p?.pane) return null;
++  const key = `pane-rename.v1:${JSON.stringify([p.pane, p.terminal ?? null, p.mod ?? null])}`;
++  const name = shared(key);
++  return typeof name === "string" && name ? name : null;
++}
++
++// Call once as the native menu opens; never call in render or on a polling timer.
++export async function paneRenameAvailable() {
++  try {
++    const text = await readTextFile(`${appHome()}/mods/pane-rename/mod.json`);
++    return JSON.parse(text ?? "null")?.pane_rename_api === 1;
++  } catch {
++    return false;
++  }
++}
++
++// Call only from a menu whose availability check succeeded. Capture the clicked ID.
++export function openPaneRename(pane) {
++  if (typeof pane !== "string" || !pane) return;
++  return openOverlay({ mod: "pane-rename", kind: "dialog", frame: "none", width: 460, props: { pane } });
++}
+--- a/layouts/fallout.json
++++ b/layouts/fallout.json
+@@ -121,5 +121,6 @@
+     16,
+     22
+   ],
+-  "preview": "layouts/fallout.svg"
++  "preview": "layouts/fallout.svg",
++  "terminal_menu": "pane-rename-menu"
+ }

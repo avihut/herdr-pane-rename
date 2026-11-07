@@ -1,0 +1,10 @@
+[tasks.test]
+run = ["node --test tests/*.test.js", "python3 -m unittest discover -s tests -p 'test_*.py'"]
+[tasks.check]
+run = "python3 scripts/check.py"
+[tasks.plan]
+run = "python3 scripts/install.py --dry-run"
+[tasks.install]
+run = "python3 scripts/install.py"
+[tasks.uninstall]
+run = "python3 scripts/install.py --uninstall"
