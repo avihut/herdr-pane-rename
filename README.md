@@ -58,7 +58,7 @@ Uninstall restores files this installer changed. It refuses if they were edited 
 - A live native harness verified save, reset, cancellation, Unicode, overlength rejection, stale targets and isolation of an unfocused target. Physical shortcut and mouse interaction are separate from this programmatic verification.
 - Dark-appearance dialog captures were inspected for XP, 98, LCARS, Board, Pasture, Fallout, Herdr, Terminals, T3, Space Folders, Traveler and Herdr Sim.
 
-**Host limitation:** the shared Herdr mod runtime exhausted memory during extended installation/layout QA. XP documents recovery by restarting Herdr.app; herdr-core need not be restarted. Avoid repeated file-by-file installs. Further live light-mode/Cockpit/Evangelion verification is pending recovery; passing native checks alone does not establish visual correctness. Live terminal screenshots are kept private.
+**Host limitation:** the shared Herdr mod runtime exhausted memory during extended installation/layout QA. XP documents recovery by restarting Herdr.app; herdr-core need not be restarted. Avoid repeated file-by-file installs. An app-only restart recovered XP with no reported errors and preserved all six live terminal sessions; the user confirmed recovery. Further light-mode/Cockpit/Evangelion visual verification remains pending; passing native checks alone does not establish visual correctness. Live terminal screenshots are kept private.
 
 ## Design and API
 
