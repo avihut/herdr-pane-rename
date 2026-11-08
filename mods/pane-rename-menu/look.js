@@ -41,6 +41,26 @@ export function look() {
     accent: dark ? "#83dfab" : "#156941", onAccent: dark ? "#11191b" : "#f0f0e6",
     selected: dark ? "#83dfab" : "#156941", hover: dark ? "#83dfab" : "#156941",
     heading: dark ? "#dbb46d" : "#74531e" });
+  else if (layout === "tron") {
+    // TRON's grid palette (mods/tron/design.js), including its classic violet variant.
+    const classic = shared("tron.v1.classic") === true;
+    const accent = dark ? (classic ? "#c5a9ff" : "#65ddf5") : (classic ? "#643ca5" : "#006a80");
+    Object.assign(s, { kind: "tron", font: "Geist", radius: 2, size: 12, row: 28,
+      bg: dark ? "#0a151c" : "#f3f7f7", field: dark ? "#04090d" : "#dce8eb",
+      fg: dark ? "#e6f5f7" : "#122c38", dim: dark ? "#93adb8" : "#47616d",
+      edge: accent, button: dark ? "#142a35" : "#ccdde2", accent, heading: accent,
+      onAccent: dark ? "#04090d" : "#f3f7f7", selected: accent, hover: accent });
+  } else if (layout === "expanse") {
+    // Expanse's ship palettes (mods/expanse/kit.js colors()): Roci, Belt and UNN.
+    const p = shared("expanse.v1.palette") ?? "roci";
+    const accent = p === "belt" ? (dark ? "#edc476" : "#775014") : p === "unn" ? (dark ? "#87bfff" : "#245991") : (dark ? "#75d7e7" : "#006878");
+    Object.assign(s, { kind: "expanse", font: "Geist Mono", radius: 2, size: 12, row: 28,
+      bg: dark ? "#14232c" : "#cedfe1", field: dark ? "#0a151e" : "#e6eff0",
+      fg: dark ? "#cce4e7" : "#173b44", dim: dark ? "#91b0b7" : "#446771",
+      edge: dark ? "#315663" : "#7297a0", button: dark ? "#0a151e" : "#e6eff0", accent,
+      onAccent: dark ? "#0a151e" : "#e6eff0", selected: accent, hover: accent,
+      strip: dark ? "#5a2939" : "#863e50", stripFg: "#fff0f0" });
+  }
   else if (layout === "board") Object.assign(s, { kind: "board", radius: 7, size: 13 });
   else if (layout === "evangelion") Object.assign(s, { kind: "evangelion", font: "Geist Mono", radius: 0, size: 12, row: 28 });
   else if (["terminals", "my-terminals"].includes(layout)) Object.assign(s, { kind: "terminals", radius: 16, size: 13 });
@@ -80,8 +100,9 @@ export function panel(s, content, title, dismiss) {
     else if (s.kind === "win98") bar = bar.h(22).px(4).bg(s.accent).text_color(s.onAccent);
     else if (s.kind === "lcars") bar = bar.bg(s.accent).text_color(s.onAccent).rounded_tl(24).rounded_tr(24);
     else if (s.kind === "evangelion") bar = bar.font_family("Antonio").text_size(20).text_color(s.accent).border_b(1).border_color(s.accent);
+    else if (s.kind === "expanse") bar = bar.h(28).bg(s.strip).text_color(s.stripFg);
     else bar = bar.text_color(s.heading ?? s.fg).border_b(1).border_color(s.edge);
-    root = root.child(bar.child(div().relative().flex_1().font_semibold().child(["lcars", "fallout", "evangelion"].includes(s.kind) ? title.toUpperCase() : title))
+    root = root.child(bar.child(div().relative().flex_1().font_semibold().child(["lcars", "fallout", "evangelion", "tron", "expanse"].includes(s.kind) ? title.toUpperCase() : title))
       .child(div().relative().id("rename-dismiss").px(5).cursor_pointer().child("×").on_click(dismiss)));
   }
   root = root.child(content);
