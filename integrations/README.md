@@ -21,7 +21,12 @@ Install the three common mods first. Apply a patch only to its matching source r
 | `winxp.patch` | `avihut/herdr-xp` at `54bfd5b` |
 | `fallout.patch` | `avihut/herdr-fallout` at `5b41b87` |
 | `evangelion.patch` | `avihut/herdr-evangelion` at `d7daf8e` |
+| `tron.patch` | `avihut/herdr-tron` at `aacd7db` |
 
-From the layout source worktree, run `git apply --check /path/to/patch` before `git apply /path/to/patch`. Run that repository’s checks and install task: XP uses `mise run install`; Fallout uses `mise run install-update`; Evangelion uses `mise run update`. The patches include the optional helper inside the host mod. They retain native controls and add a root `terminal_menu` reference; Herdr documents its built-in fallback if that optional menu mod is missing.
+From the layout source worktree, run `git apply --check /path/to/patch` before `git apply /path/to/patch`. Run that repository’s checks and install task: XP uses `mise run install`; Fallout uses `mise run install-update`; Evangelion and TRON use `mise run update`. The patches include the optional helper inside the host mod. They retain native controls; the older three also add a root `terminal_menu` reference (TRON's layout already routes terminal right-clicks to its own menu); Herdr documents its built-in fallback if that optional menu mod is missing.
 
 Evangelion public main at `3648742` already includes this integration; do not apply its patch twice. The patch is for the pre-integration `d7daf8e` baseline only. Its integration includes installer completeness checks. Do not copy only its main/kit files: the helper must be installed with them.
+
+The TRON patch adds `Rename pane…` to TRON's own pane menu (its `···` button, header right-click and terminal right-click all open it), shows the custom name in the console header and tooltip, and vendors the helper as `mods/tron/pane-rename.js`. On a copy of `aacd7db` it passed TRON's 19 tests and its 177 isolated native renders; the capability check is skipped in fixtures, so the menu entry itself needs a live look.
+
+StarCraft II and Expanse vendor the helper in their own sources; no patch is needed for them.

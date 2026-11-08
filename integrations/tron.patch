@@ -1,0 +1,87 @@
+diff --git a/mods/tron/main.js b/mods/tron/main.js
+index 63c5478..f058fbf 100644
+--- a/mods/tron/main.js
++++ b/mods/tron/main.js
+@@ -9,6 +9,7 @@ import { parseNetwork, parseBattery, layoutChoices, statusText } from './system.
+ import { projectDisc, faceColor } from './geometry.js';
+ import { gridFloor } from './circuitry.js';
+ import { gridPalette, consoleGeometry, discCradle, energyMotion } from './design.js';
++import { renamedPane, paneRenameAvailable, openPaneRename } from './pane-rename.js';
+ 
+ const NS='tron.v1.';
+ const read=(k,f)=>shared(NS+k)??f;
+@@ -63,6 +64,8 @@ class Tron extends View{
+   this.handle=cx.focus_handle();this.net={state:'unknown',interfaces:[]};this.batt={present:null,state:'unknown',percent:null};this.sample=null;this.busy=false;
+   if(this.role==='side'&&!this.p.fixture){this.sectorData=new WorkspaceTree();this.sectorData.init({inline:true,owner:'tron'},cx);}
+   if(this.role==='footer'&&!this.p.fixture){this.refresh(cx);cx.timer.every(30000,c=>this.refresh(c));}
++  // Optional pane-rename mod: checked once as a menu opens, never per render.
++  if(this.role==='menu'&&!this.p.fixture)cx.spawn(async c=>{this.renameAvailable=await paneRenameAvailable();c.notify();});
+   if(this.p.fixtureState)Object.assign(this,this.p.fixtureState);
+  }
+  refresh(cx){if(this.busy||hostWindow().platform!=='macos')return;this.busy=true;cx.spawn(async c=>{try{const safe=async(cmd,args)=>{try{return await exec(cmd,args);}catch{return null;}};const [n,b]=await Promise.all([safe('/usr/sbin/scutil',['--nwi']),safe('/usr/bin/pmset',['-g','batt'])]);this.net=parseNetwork(n);this.batt=parseBattery(b,this.batt.present);this.sample=new Date().toLocaleTimeString();}finally{this.busy=false;c.notify();}});}
+@@ -117,20 +120,21 @@ class Tron extends View{
+ 
+  pane(){
+   const c=palette(),p=panes().find(p=>p.pane===this.p.pane);if(!p)return div();
++  const title=renamedPane(p)||p.title;
+   const color=p.status==='blocked'?c.orange:p.status==='done'?c.green:c.accent;
+   return v_flex().relative().size_full().bg(c.bg)
+    .on_mouse_down('right',(_e,cx)=>{cx.stop_propagation();context('pane',p.pane,p.terminal);})
+    .child(consoleSkin(this.width,68,color,'console-'+p.pane))
+    .child(h_flex().relative().h(40).w_full().flex_none().px(14).gap(10).items_center()
+     .child(txt(p.terminal??'MOD',p.focused?c.core:color,13).font_family('Geist Mono').font_semibold().flex_none())
+-    .when(this.width>=360,e=>e.child(txt(p.title,c.text,11).truncate().flex_1()))
++    .when(this.width>=360,e=>e.child(txt(title,c.text,11).truncate().flex_1()))
+     .when(this.width<360,e=>e.child(div().flex_1()))
+     .when(this.width>620,e=>e.child(txt(statusText[p.status]??'CONSOLE',color,9).flex_none()))
+     .when(this.width>300,e=>e.child(btn('split-r','⊞',()=>run('pane.split',{pane:p.pane,direction:'right'}))))
+     .child(btn('pane-zoom',p.zoomed?'↙':'↗',()=>run('pane.zoom',{pane:p.pane})))
+     .child(btn('pane-menu','···',()=>context('pane',p.pane,p.terminal))))
+    .child(h_flex().relative().px(15).h(16).gap(8).child(txt(p.focused?'FOCUSED':statusText[p.status]??'CONSOLE',color,8)))
+-   .tooltip(`${p.title} · ${statusText[p.status]??'Console'}`);
++   .tooltip(`${title} · ${statusText[p.status]??'Console'}`);
+  }
+ 
+  footer(){const c=palette(),a=agents(),network=`LINK ${this.net.state==='available'?'UP':this.net.state==='offline'?'DOWN':'?'}`,battery=this.batt.percent===null?'?':`${this.batt.percent}%`;return h_flex().size_full().border_t(1).border_color(c.line).px(12).gap(this.width<400?6:14).items_center().bg(c.bg).text_size(10).when(this.width>460,e=>e.child(txt(`${a.filter(x=>x.status==='working').length} working · ${a.filter(x=>x.status==='blocked').length} need input`,c.muted,10))).child(div().flex_1()).child(txt(network,this.net.state==='available'?c.accent:c.muted,10).tooltip(`Local interface availability, not Internet proof.\n${this.net.interfaces.join(', ')||'No interfaces reported'}\nSample: ${this.sample??'pending / unsupported platform'}`)).when(this.batt.present!==false,e=>e.child(h_flex().gap(4).items_center().child(div().w(21).h(11).p(2).border(1).border_color(c.muted).rounded(2).child(div().h_full().w(this.batt.percent===null?0:15*this.batt.percent/100).bg(c.accent))).child(txt(`${battery} ${this.batt.state==='charging'?'↑':this.batt.state==='ac'?'AC':''}`,c.muted,10)).tooltip(`Battery: ${this.batt.state} · sample ${this.sample??'pending'}`))).child(btn('motion',this.width<350?(read('reducedMotion',false)?'Still':'Flow'):(read('reducedMotion',false)?'Energy still':'Energy flowing'),()=>save('reducedMotion',!read('reducedMotion',false))).tooltip('Toggle ambient circuit motion. This does not represent real message delivery.'));}
+@@ -139,8 +143,8 @@ class Tron extends View{
+  if(type==='space')actions=[['Select sector','space.select',{id}],['Rename sector','space.rename',{id}],['New route','tab.new',{space:id}],['Close sector…','space.close',{id}]];
+  if(type==='tab')actions=[['Select route','tab.select',{id}],['Rename route','tab.rename',{id}],['Close route…','tab.close',{id}]];
+  if(type==='agent')actions=[['Focus Program','agent.focus',{terminal:target.terminal}],['Peek Program','terminal.peek',{terminal:target.terminal}]];
+- if(type==='pane'&&id)actions=[['Focus pane','pane.focus',{pane:id}],['Split right','pane.split',{pane:id,direction:'right'}],['Split down','pane.split',{pane:id,direction:'down'}],['Zoom pane','pane.zoom',{pane:id}],['Close pane…','pane.close',{pane:id}]];
+- return v_flex().bg(c.panel).border(1).border_color(c.accent).rounded(2).p(7).gap(4).child(corner()).child(label(`TARGET / ${id??'Unavailable'}`)).children(actions.map(([name,cmd,args],i)=>btn(`context-${i}`,name,command(cmd,args))));}
++ if(type==='pane'&&id)actions=[...(this.renameAvailable?[['Rename pane…',()=>{close();openPaneRename(id);}]]:[]),['Focus pane','pane.focus',{pane:id}],['Split right','pane.split',{pane:id,direction:'right'}],['Split down','pane.split',{pane:id,direction:'down'}],['Zoom pane','pane.zoom',{pane:id}],['Close pane…','pane.close',{pane:id}]];
++ return v_flex().bg(c.panel).border(1).border_color(c.accent).rounded(2).p(7).gap(4).child(corner()).child(label(`TARGET / ${id??'Unavailable'}`)).children(actions.map(([name,cmd,args],i)=>btn(`context-${i}`,name,typeof cmd==='function'?cmd:command(cmd,args))));}
+  rooms(){const c=palette(),nav=[['command','Grid command'],['lounge','End of Line'],['armory','Disc archive'],['portal','Portal map']];return shell('Destinations',v_flex().flex_1().min_h(0).child(h_flex().flex_none().p(10).gap(6).flex_wrap().children(nav.map(([id,name])=>btn(`room-${id}`,name,(_e,cx)=>{this.room=id;cx.notify();},this.room===id)))).child(v_flex().id('room-scroll').flex_1().min_h(0).overflow_y_scrollbar().p(20).gap(16).children(this.room==='command'?this.commandRoom():this.room==='armory'?this.armory():this.room==='portal'?this.portals():this.lounge())), 'A quiet place between operations.',this.width);}
+  commandRoom(){const c=palette(),a=agents();return [txt('Good to see you, Program.',c.text,27),txt('Your operations keep running while you explore.',c.muted),h_flex().gap(12).flex_wrap().children([['SECTORS',spaces().length],['PROGRAMS',a.length],['NEED INPUT',a.filter(x=>x.status==='blocked').length],['FINISHED UNSEEN',a.filter(x=>x.status==='done').length]].map(([t,n])=>section(t,[txt(n,c.accent,28)]))),section('ATTENTION QUEUE',a.filter(x=>x.status==='blocked'||x.status==='done').map(x=>btn(`attention-${x.address}`,`${x.address} · ${x.title} · ${statusText[x.status]}`,command('agent.focus',{terminal:x.address}))).concat(a.some(x=>x.status==='blocked'||x.status==='done')?[]:[txt('No Programs currently need attention.',c.muted)])),section('LOCAL PREFERENCES',[h_flex().gap(8).flex_wrap().child(btn('motion-pref',read('reducedMotion',false)?'Reduced motion: on':'Reduced motion: off',()=>save('reducedMotion',!read('reducedMotion',false)))).child(btn('palette-pref',read('classic',false)?'Palette: classic grid':'Palette: Legacy',()=>save('classic',!read('classic',false)))).child(btn('reset-progress','Reset discoveries & bests',()=>open('room',{room:'reset'}))),txt('No audio is played by this layout. Cosmetic choices never change agents.',c.muted)])];}
+  armory(){const c=palette(),as=agents(),selected=as.find(a=>a.address===read('discAgent',''))??as.find(a=>a.focused)??as[0],accent=read('discColor','cyan')==='orange'?c.orange:read('discColor','cyan')==='white'?c.text:c.accent;return [txt('Identity-disc archive',c.text,25),txt('Rotate a solid 3D disc. Choose a real Program, then focus its terminal.',c.muted),h_flex().gap(24).flex_wrap().child(v_flex().gap(10).child(this.discModel(accent)).child(h_flex().gap(6).children([['yaw-left','↶',-.25,0],['yaw-right','↷',.25,0],['pitch-up','Tilt +',0,.2],['pitch-down','Tilt −',0,-.2]].map(([id,t,y,p])=>btn(id,t,(_e,cx)=>{this.yaw+=y;this.pitch+=p;cx.notify();})))).child(btn('reset-disc','Reset view',(_e,cx)=>{this.yaw=.3;this.pitch=.85;cx.notify();}))).child(v_flex().min_w(220).flex_1().gap(12).child(section('BOUND PROGRAM',[txt(selected?`${selected.title} · ${selected.address}`:'No reporting Programs',c.text,16),txt(selected?statusText[selected.status]:'The disc is unbound.',c.muted),...(selected?[btn('focus-disc','Focus this Program',command('agent.focus',{terminal:selected.address}))]:[]),...as.map(a=>btn(`bind-${a.address}`,`${a.address} / ${a.title}`,()=>save('discAgent',a.address),selected?.address===a.address))])).child(section('COSMETIC CIRCUIT',[h_flex().gap(6).children(['cyan','orange','white'].map(n=>btn(`color-${n}`,n,()=>save('discColor',n),read('discColor','cyan')===n))),txt('Color is cosmetic. Status stays in words.',c.muted)]))),txt('192 depth-sorted lit faces · perspective projection · manual transforms',c.muted,10)];}
+diff --git a/mods/tron/pane-rename.js b/mods/tron/pane-rename.js
+new file mode 100644
+index 0000000..3d29f25
+--- /dev/null
++++ b/mods/tron/pane-rename.js
+@@ -0,0 +1,25 @@
++// Copy into the host layout's own mod folder. It has no imports from the optional mod.
++import { shared, readTextFile, appHome, openOverlay } from "herdr";
++
++export function renamedPane(p) {
++  if (!p?.pane) return null;
++  const key = `pane-rename.v1:${JSON.stringify([p.pane, p.terminal ?? null, p.mod ?? null])}`;
++  const name = shared(key);
++  return typeof name === "string" && name ? name : null;
++}
++
++// Call once as the native menu opens; never call in render or on a polling timer.
++export async function paneRenameAvailable() {
++  try {
++    const text = await readTextFile(`${appHome()}/mods/pane-rename/mod.json`);
++    return JSON.parse(text ?? "null")?.pane_rename_api === 1;
++  } catch {
++    return false;
++  }
++}
++
++// Call only from a menu whose availability check succeeded. Capture the clicked ID.
++export function openPaneRename(pane) {
++  if (typeof pane !== "string" || !pane) return;
++  return openOverlay({ mod: "pane-rename", kind: "dialog", frame: "none", width: 460, props: { pane } });
++}
