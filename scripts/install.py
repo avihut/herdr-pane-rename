@@ -100,6 +100,101 @@ def write_atomic(path, data):
     temp.write_bytes(data)
     temp.replace(path)
 
+OWNED = ("pane-rename", "pane-rename-menu", "pane-rename-header")
+GENERATED = {"gpui-kit.d.ts", "jsconfig.json"}
+
+def current_digest(home, rel):
+    path = home / rel
+    return digest(path.read_bytes()) if path.is_file() else None
+
+def publish_mod_folder(home, backup, mod_dir, members, expected):
+    """Swap in a complete staged copy of one mod folder with a single rename.
+
+    The stage starts as a copy of the installed folder, so app-generated and
+    unowned files survive. Per-file writes into a watched mod reload the host
+    VM repeatedly; one swap reloads it once. Returns the previous folder, which
+    the caller removes after recording the new hashes.
+    """
+    staging = backup / ".staging"
+    stage, previous = staging / mod_dir, staging / (mod_dir + ".previous")
+    if stage.exists() or previous.exists():
+        raise ValueError(f"Leftover staging for {mod_dir} in {staging}; inspect it before retrying")
+    target = home / "mods" / mod_dir
+    if target.exists(): shutil.copytree(target, stage, symlinks=True)
+    else: stage.mkdir(parents=True)
+    try:
+        for member, content in sorted(members.items(), key=lambda item: not item[0].endswith("mod.json")):
+            write_atomic(stage / Path(member).relative_to(f"mods/{mod_dir}"), content)
+        for member in members:
+            if current_digest(home, member) != expected[member]:
+                raise ValueError(f"Concurrent edit while staging: {member}")
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists(): target.rename(previous)
+    try: stage.rename(target)
+    except OSError:
+        if previous.exists(): previous.rename(target)
+        raise
+    return previous
+
+def plan_update(home, manifest):
+    """Owned files whose source differs from the installed copy, by mod folder.
+
+    Refuses, without writing, when an installed owned file no longer matches
+    the hash recorded at installation (someone else changed it), when a new
+    source file would overwrite an unmanaged file, or when the source dropped
+    a file the installation still carries.
+    """
+    changes = {}
+    for mod_dir in OWNED:
+        source_dir = ROOT / "mods" / mod_dir
+        shipped = {f"mods/{mod_dir}/{path.relative_to(source_dir)}": path.read_bytes()
+                   for path in sorted(source_dir.rglob("*")) if path.is_file() and path.name not in GENERATED}
+        dropped = [rel for rel in manifest if rel.startswith(f"mods/{mod_dir}/") and rel not in shipped]
+        if dropped:
+            raise ValueError("Source no longer ships installed files; uninstall and reinstall instead: " + ", ".join(sorted(dropped)))
+        for rel, data in shipped.items():
+            item, current = manifest.get(rel), current_digest(home, rel)
+            if item is None:
+                if current is not None:
+                    raise ValueError(f"Unmanaged file at {rel}; refusing to overwrite")
+            elif not item.get("applied", True) or current != item["installed"]:
+                raise ValueError(f"{rel} changed since installation; refusing to update")
+            if current != digest(data):
+                changes.setdefault(mod_dir, {})[rel] = data
+    return changes
+
+def require_healthy(home):
+    env = dict(os.environ, HERDR_APP_HOME=str(home))
+    result = subprocess.run(["herdr-app", "status"], env=env, check=True, capture_output=True, text=True, timeout=15)
+    errors = json.loads(result.stdout).get("errors")
+    if errors:
+        raise ValueError("Live Herdr reports errors; not reloading mods: " + "; ".join(map(str, errors)))
+
+def update(home, dry_run=False):
+    """Deploy newer source for the three owned mods over an existing installation."""
+    backup = home / ".pane-rename-backup"
+    if not (backup / "manifest.json").is_file():
+        raise ValueError("No installation manifest; install first")
+    manifest = json.loads((backup / "manifest.json").read_text())
+    changes = plan_update(home, manifest)
+    print(json.dumps({"update": {mod: sorted(files) for mod, files in changes.items()}}, indent=2))
+    if dry_run or not changes:
+        if not changes: print("Installed pane-rename mods already match the source.")
+        return
+    require_healthy(home)
+    for mod_dir, members in changes.items():
+        expected = {rel: manifest[rel]["installed"] if rel in manifest else None for rel in members}
+        previous = publish_mod_folder(home, backup, mod_dir, members, expected)
+        for rel, data in members.items():
+            existed = manifest.get(rel, {}).get("existed", False)
+            manifest[rel] = {"installed": digest(data), "existed": existed, "applied": True}
+        write_atomic(backup / "manifest.json", encoded(manifest))
+        if previous.exists(): shutil.rmtree(previous)
+    print("Updated. Run mise check, then verify the dialogs in the app.")
+
 def uninstall(home):
     backup = home / ".pane-rename-backup"
     manifest = json.loads((backup / "manifest.json").read_text())
@@ -132,9 +227,12 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--stage", type=Path, help="Write review files to a separate directory only")
     parser.add_argument("--uninstall", action="store_true")
+    parser.add_argument("--update", action="store_true", help="Deploy newer source for the owned pane-rename mods only")
     args = parser.parse_args()
     if args.uninstall:
         uninstall(args.home); return
+    if args.update:
+        update(args.home, dry_run=args.dry_run); return
     if (args.home / ".pane-rename-backup").exists():
         raise ValueError("An installation backup already exists; uninstall before reinstalling")
     writes, originals, clones, layouts = plan(args.home)
@@ -187,24 +285,10 @@ def main():
             if mod_dir in published_mods:
                 continue
             members = {r: d for r, d in writes.items() if r.startswith(f"mods/{mod_dir}/")}
-            stage = backup / ".staging" / mod_dir
-            target = args.home / "mods" / mod_dir
-            previous = backup / ".staging" / (mod_dir + ".previous")
-            if target.exists(): shutil.copytree(target, stage)
-            else: stage.mkdir(parents=True)
-            for member, content in sorted(members.items(), key=lambda item: not item[0].endswith("mod.json")):
-                write_atomic(stage / Path(member).relative_to(f"mods/{mod_dir}"), content)
-            for member in members:
-                current_bytes = (args.home / member).read_bytes() if (args.home / member).is_file() else None
-                expected_hash = manifest[member]["installed"] if manifest[member]["applied"] else (digest(originals[member]) if originals[member] is not None else None)
-                if (digest(current_bytes) if current_bytes is not None else None) != expected_hash:
-                    raise ValueError(f"Concurrent edit while staging: {member}")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.exists(): target.rename(previous)
-            try: stage.rename(target)
-            except OSError:
-                if previous.exists(): previous.rename(target)
-                raise
+            expected_hashes = {member: manifest[member]["installed"] if manifest[member]["applied"]
+                               else (digest(originals[member]) if originals[member] is not None else None)
+                               for member in members}
+            previous = publish_mod_folder(args.home, backup, mod_dir, members, expected_hashes)
             for member, content in members.items():
                 manifest[member].update(installed=digest(content), applied=True)
             write_atomic(backup / "manifest.json", encoded(manifest))

@@ -8,3 +8,7 @@ run = "python3 scripts/install.py --dry-run"
 run = "python3 scripts/install.py"
 [tasks.uninstall]
 run = "python3 scripts/install.py --uninstall"
+[tasks.update-plan]
+run = "python3 scripts/install.py --update --dry-run"
+[tasks.update]
+run = "python3 scripts/install.py --update"
