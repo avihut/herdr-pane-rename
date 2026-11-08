@@ -25,9 +25,9 @@ This is a native GPUI mod for the **Herdr desktop app**. Names are persistent, c
 | Fallout | Pane header and ··· menu; green/amber instrument-panel dialog |
 | Evangelion | Entry-plug header and pane menu; native palette and typography |
 | StarCraft II, Expanse | Their own headers and pane menus, through the helper vendored in each layout’s source |
-| TRON | Dialog style included; header and menu integration offered to its author as [a reviewed patch](integrations/README.md) |
+| TRON | Console header names and a pane-menu entry, in TRON's own source |
 
-The installer adapts existing personal layouts. Independently maintained XP, Fallout and Evangelion sources use the optional [integration helper and patches](integrations/README.md), so their normal installers remain authoritative. New layouts can use the same small helper. StarCraft II and Expanse ship it in their own sources.
+The installer adapts existing personal layouts. Independently maintained XP, Fallout and Evangelion sources use the optional [integration helper and patches](integrations/README.md), so their normal installers remain authoritative. New layouts can use the same small helper. StarCraft II, Expanse and TRON ship it in their own sources.
 
 ## Install
 
