@@ -2,7 +2,7 @@
 
 Give each pane a useful name: **Build server**, **API tests**, **Release notes**. Open **Rename pane…** from a pane’s context menu, or press **Cmd+F2** on macOS (**Ctrl+Shift+F2** elsewhere).
 
-The dialog belongs to the layout around it: XP blue title bars, Windows 98 bevels, LCARS slabs, Fallout phosphor, Pasture wood, or Herdr’s current palette. Your names stay with the pane when you switch layouts.
+The dialog belongs to the layout around it: XP blue title bars, Windows 98 bevels, LCARS slabs, Fallout phosphor, Pasture wood, StarCraft II consoles, TRON grid lines, Expanse ship panels, or Herdr’s current palette. Your names stay with the pane when you switch layouts.
 
 ## Use it
 
@@ -24,8 +24,10 @@ This is a native GPUI mod for the **Herdr desktop app**. Names are persistent, c
 | Windows XP | Native window menu; names also appear in taskbar, drag previews and Task Manager |
 | Fallout | Pane header and ··· menu; green/amber instrument-panel dialog |
 | Evangelion | Entry-plug header and pane menu; native palette and typography |
+| StarCraft II, Expanse | Their own headers and pane menus, through the helper vendored in each layout’s source |
+| TRON | Dialog style included; header and menu integration offered to its author as [a reviewed patch](integrations/README.md) |
 
-The installer adapts existing personal layouts. Independently maintained XP, Fallout and Evangelion sources use the optional [integration helper and patches](integrations/README.md), so their normal installers remain authoritative. New layouts can use the same small helper. StarCraft II’s author has integrated it in the staged source; the dialog includes that layout’s light/dark palette, Geist typography and square panels. Live installation of StarCraft remains with its author.
+The installer adapts existing personal layouts. Independently maintained XP, Fallout and Evangelion sources use the optional [integration helper and patches](integrations/README.md), so their normal installers remain authoritative. New layouts can use the same small helper. StarCraft II and Expanse ship it in their own sources.
 
 ## Install
 
@@ -49,16 +51,19 @@ Install the common mods first, then apply any source-repository integration desc
 mise run uninstall
 ```
 
+To deploy newer source for the three pane-rename mods over an existing installation, run `mise run update-plan`, then `mise run update`. It never touches layouts, keys or other mods. It refuses if an installed pane-rename file was edited after installation, or if Herdr reports errors. It swaps only the changed mod folders, one rename each, keeping the app's generated files. Uninstall still works afterwards.
+
 Uninstall restores files this installer changed. It refuses if they were edited afterward, preserving subsequent work. Separate layout source integrations belong to those repositories. Saved names remain in Herdr’s shared state.
 
 ## Validation
 
-- 15 automated tests cover target identity, Unicode limits, optional dependency failures, preserving layout roots, shortcut conflicts, complete installation and safe restoration.
+- 21 automated tests cover target identity, Unicode limits, optional dependency failures, preserving layout roots, shortcut conflicts, complete installation, guarded updates and safe restoration.
 - Native `herdr-app check` passes for the common mods and adapted headers. XP, Fallout and Evangelion also pass their source checks.
 - A live native harness verified save, reset, cancellation, Unicode, overlength rejection, stale targets and isolation of an unfocused target. Physical shortcut and mouse interaction are separate from this programmatic verification.
-- Dark-appearance dialog captures were inspected for XP, 98, LCARS, Board, Pasture, Fallout, Herdr, Terminals, T3, Space Folders, Traveler and Herdr Sim.
+- Dark-appearance dialog captures were inspected for XP, 98, LCARS, Board, Pasture, Fallout, Herdr, Terminals, T3, Space Folders, Traveler and Herdr Sim. After `mise run update` deployed the latest styles, the dialog was opened in StarCraft II (dark) through the same command Cmd+F2 runs and inspected; Herdr reported no errors.
+- Not yet verified by a real keypress or click: Cmd+F2 and right-click → Rename pane. macOS denied synthetic keystrokes to the automation (no Accessibility permission). TRON, Expanse and Cockpit dialogs and all light-mode dialogs have not been inspected live.
 
-**Host limitation:** the shared Herdr mod runtime exhausted memory during extended installation/layout QA. XP documents recovery by restarting Herdr.app; herdr-core need not be restarted. Avoid repeated file-by-file installs. An app-only restart recovered XP with no reported errors and preserved all six live terminal sessions; the user confirmed recovery. Further light-mode/Cockpit/Evangelion visual verification remains pending; passing native checks alone does not establish visual correctness. Live terminal screenshots are kept private.
+**Host limitation:** the shared Herdr mod runtime exhausted memory during extended installation/layout QA. XP documents recovery by restarting Herdr.app; herdr-core need not be restarted. Avoid repeated file-by-file installs. An app-only restart recovered XP with no reported errors and preserved all six live terminal sessions; the user confirmed recovery. Passing native checks alone does not establish visual correctness. Live terminal screenshots are kept private.
 
 ## Design and API
 
